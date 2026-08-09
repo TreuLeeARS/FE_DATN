@@ -11,6 +11,14 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.*
+!.env.example
+
+# Local recovery and debugging files
+*.corrupted-backup.*
+debug_db.js
+scratch_*.js
 
 # Editor directories and files
 .vscode/*

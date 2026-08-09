@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import './index.css'
-import App from './App.jsx'
+import App from './app/App.jsx'
 
 // Register GSAP plugins globally
 gsap.registerPlugin(ScrollTrigger)
