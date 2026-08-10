@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 import { ActionBadge } from './ActionBadge.jsx'
-import { formatValue, getActionLabel, getChangedFields, getFieldLabel, getStatusLabel, getTargetDisplayName, getTargetLabel, maskSensitiveData } from '../actionLogUtils.js'
+import { formatValue, getActionLabel, getChangedFields, getFieldLabel, getModuleLabel, getStatusLabel, getTargetDisplayName, getTargetLabel, maskSensitiveData } from '../actionLogUtils.js'
 
 const Detail = ({ label, children }) => <div><dt className="mb-1 text-[10px] font-bold uppercase tracking-wider text-brand-muted">{label}</dt><dd className="text-sm break-words text-brand-charcoal">{children ?? '—'}</dd></div>
 
@@ -37,7 +37,7 @@ export const ActionLogDetail = ({ log, loading, error, onClose, onRetry }) => cr
             {!changedFields.length && isDeleteAction && <Snapshot title="Thông tin trước khi xóa" data={log.beforeData || log.afterData} />}
             {!changedFields.length && !isCreateAction && !isDeleteAction && <section className="rounded-xl border border-dashed border-gray-200 p-4 text-xs text-brand-muted">Hệ thống chưa lưu dữ liệu trước và sau cho thao tác này.</section>}
 
-            {hasTechnicalInfo && <details className="rounded-xl border border-gray-100 p-4"><summary className="cursor-pointer text-xs font-semibold text-brand-muted">Thông tin kỹ thuật</summary><dl className="mt-4 grid gap-4 text-xs sm:grid-cols-2"><Detail label="Khu vực hệ thống">{log.module}</Detail><Detail label="Yêu cầu">{[log.httpMethod, log.endpoint].filter(Boolean).join(' ')}</Detail><Detail label="Địa chỉ IP">{log.ipAddress}</Detail><Detail label="Mã yêu cầu">{log.requestId}</Detail>{log.userAgent && <div className="sm:col-span-2"><Detail label="Thiết bị/trình duyệt">{log.userAgent}</Detail></div>}</dl></details>}
+            {hasTechnicalInfo && <details className="rounded-xl border border-gray-100 p-4"><summary className="cursor-pointer text-xs font-semibold text-brand-muted">Thông tin kỹ thuật</summary><dl className="mt-4 grid gap-4 text-xs sm:grid-cols-2"><Detail label="Khu vực hệ thống">{getModuleLabel(log.module)}</Detail><Detail label="Yêu cầu">{[log.httpMethod, log.endpoint].filter(Boolean).join(' ')}</Detail><Detail label="Địa chỉ IP">{log.ipAddress}</Detail><Detail label="Mã yêu cầu">{log.requestId}</Detail>{log.userAgent && <div className="sm:col-span-2"><Detail label="Thiết bị/trình duyệt">{log.userAgent}</Detail></div>}</dl></details>}
           </>
         })() : null}
       </div>

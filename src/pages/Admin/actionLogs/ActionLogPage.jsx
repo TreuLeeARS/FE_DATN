@@ -6,7 +6,7 @@ import { ActionLogFilters } from './components/ActionLogFilters.jsx'
 import { ActionLogDetail } from './components/ActionLogDetail.jsx'
 import { getStatusLabel, getTargetDisplayName, getTargetLabel, unwrapListResponse } from './actionLogUtils.js'
 
-const defaults = { keyword: '', action: '', status: '', fromDate: '', toDate: '' }
+const defaults = { keyword: '', action: '', module: '', status: '', fromDate: '', toDate: '' }
 // Các lựa chọn số nhật ký hiển thị mỗi trang.
 const ACTION_LOG_PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 // Số nhật ký mặc định hiển thị mỗi trang.
@@ -40,6 +40,7 @@ export const ActionLogPage = () => {
       sort: 'createdAt,desc',
       keyword: apiFilters.keyword,
       actionType: apiFilters.action,
+      module: apiFilters.module,
       status: apiFilters.status,
       from: apiFilters.fromDate ? `${apiFilters.fromDate}T00:00:00` : '',
       to: apiFilters.toDate ? `${apiFilters.toDate}T23:59:59` : '',

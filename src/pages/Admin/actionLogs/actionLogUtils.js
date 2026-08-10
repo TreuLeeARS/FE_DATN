@@ -19,7 +19,13 @@ const ACTION_LABELS = {
 const TARGET_LABELS = {
   PRODUCT: 'Sản phẩm', PRODUCT_VARIANT: 'Biến thể sản phẩm', PRODUCT_IMAGE: 'Ảnh sản phẩm', CATEGORY: 'Danh mục',
   ORDER: 'Đơn hàng', USER: 'Người dùng', COUPON: 'Mã giảm giá', PAYMENT: 'Thanh toán', PAYMENT_METHOD: 'Phương thức thanh toán',
-  COUPON_NOTIFICATION: 'Popup ưu đãi', PROFILE: 'Hồ sơ cá nhân',
+  COUPON_NOTIFICATION: 'Popup ưu đãi', COUPON_POPUP: 'Popup ưu đãi', PROFILE: 'Hồ sơ cá nhân', USER_PROFILE: 'Hồ sơ cá nhân',
+  MOMO_TRANSACTION: 'Giao dịch MoMo',
+}
+
+const MODULE_LABELS = {
+  AUTH: 'Tài khoản', PRODUCT: 'Sản phẩm', CATEGORY: 'Danh mục', USER: 'Người dùng', ORDER: 'Đơn hàng',
+  PAYMENT: 'Thanh toán', COUPON: 'Mã giảm giá', POPUP_COUPON: 'Popup ưu đãi',
 }
 
 const FIELD_LABELS = {
@@ -37,6 +43,7 @@ const parseData = (value) => {
 
 export const getActionLabel = (action) => ACTION_LABELS[action] || String(action || 'UNKNOWN').replaceAll('_', ' ')
 export const getTargetLabel = (targetType) => TARGET_LABELS[targetType] || String(targetType || 'Đối tượng').replaceAll('_', ' ')
+export const getModuleLabel = (module) => MODULE_LABELS[module] || String(module || 'Hệ thống').replaceAll('_', ' ')
 export const getFieldLabel = (field) => FIELD_LABELS[field] || String(field || '').replace(/([A-Z])/g, ' $1').replace(/^./, (letter) => letter.toUpperCase())
 export const getStatusLabel = (status) => status === 'FAILED' ? 'Không thành công' : 'Thành công'
 

@@ -88,6 +88,13 @@ const normalizeSearchText = (value) => String(value ?? '')
   .replace(/đ/g, 'd')
   .replace(/Đ/g, 'D')
   .toLowerCase()
+
+const getOrderActionErrorMessage = (error, fallbackMessage) => (
+  error.response?.data?.message?.trim()
+  || (error.request
+    ? 'Không thể kết nối đến máy chủ. Vui lòng thử lại.'
+    : fallbackMessage)
+)
   .trim()
 
 export const OrderManager = () => {
@@ -234,7 +241,7 @@ export const OrderManager = () => {
       }
     } catch (err) {
       console.error('Error updating status:', err)
-      toast.error('Cập nhật trạng thái thất bại. Vui lòng kiểm tra lại.')
+      toast.error(getOrderActionErrorMessage(err, 'Cập nhật trạng thái thất bại. Vui lòng thử lại.'))
     }
   }
 
@@ -248,7 +255,7 @@ export const OrderManager = () => {
       }
     } catch (err) {
       console.error('Error setting shipping:', err)
-      toast.error('Lỗi khi chuyển trạng thái giao hàng.')
+      toast.error(getOrderActionErrorMessage(err, 'Không thể chuyển đơn hàng sang trạng thái giao hàng.'))
     }
   }
 
@@ -262,7 +269,7 @@ export const OrderManager = () => {
       }
     } catch (err) {
       console.error('Error setting delivered:', err)
-      toast.error('Lỗi khi cập nhật đã giao hàng.')
+      toast.error(getOrderActionErrorMessage(err, 'Không thể cập nhật đơn hàng đã giao.'))
     }
   }
 
@@ -280,7 +287,7 @@ export const OrderManager = () => {
           }
         } catch (err) {
           console.error('Error cancelling order:', err)
-          toast.error('Không thể hủy đơn hàng.')
+          toast.error(getOrderActionErrorMessage(err, 'Không thể hủy đơn hàng.'))
         }
       },
       true
@@ -295,7 +302,7 @@ export const OrderManager = () => {
       fetchPaymentInfo(orderId) // reload payment info
     } catch (err) {
       console.error('Error confirming payment:', err)
-      toast.error('Lỗi khi xác nhận thanh toán.')
+      toast.error(getOrderActionErrorMessage(err, 'Không thể xác nhận thanh toán.'))
     }
   }
 
