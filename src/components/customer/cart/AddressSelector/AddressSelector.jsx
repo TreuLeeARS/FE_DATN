@@ -101,6 +101,7 @@ export const AddressSelector = ({ value, onAddressChange, disabled, error }) => 
   }, [selectedDistrict])
 
   const addressDetails = {
+    addressLine: streetAddress.trim(),
     shippingAddress: [
       streetAddress.trim(),
       getLocationName(selectedWard),
@@ -123,7 +124,7 @@ export const AddressSelector = ({ value, onAddressChange, disabled, error }) => 
     if (isComplete) {
       onAddressChange(addressDetails)
     } else if (value !== '') {
-      onAddressChange({ shippingAddress: '', province: '', district: '', ward: '' })
+      onAddressChange({ addressLine: '', shippingAddress: '', province: '', district: '', ward: '' })
     }
   }, [
     isComplete,

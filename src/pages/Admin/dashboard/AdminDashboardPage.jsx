@@ -14,6 +14,7 @@ const getMonthValue = (date = new Date()) => (
 )
 
 const MONTHLY_SOLD_PRODUCTS_FETCH_SIZE = 100
+const SOLD_PRODUCTS_PAGE_SIZE = 5
 
 const REPORT_MONTH_OPTIONS = [
   { value: '01', label: 'Tháng 1' },
@@ -54,8 +55,8 @@ export const AdminDashboard = () => {
     deliveredOrders: 0,
     totalRevenue: 0
   })
-  const [bestSellers, setBestSellers] = useState([])
   const [monthlySoldProducts, setMonthlySoldProducts] = useState([])
+  const [soldProductsPage, setSoldProductsPage] = useState(1)
   const [bestSellerMonth, setBestSellerMonth] = useState(() => getMonthValue())
   const [isLoadingBestSellers, setIsLoadingBestSellers] = useState(true)
   const [revenueDaily, setRevenueDaily] = useState([])
@@ -73,6 +74,7 @@ export const AdminDashboard = () => {
       ? currentMonth
       : selectedReportMonth
     setBestSellerMonth(`${year}-${month}`)
+    setSoldProductsPage(1)
   }
 
   useEffect(() => {
@@ -126,14 +128,13 @@ export const AdminDashboard = () => {
 
         if (isCurrent) {
           setMonthlySoldProducts(soldProducts)
-          setBestSellers(soldProducts.slice(0, 5))
+          setSoldProductsPage(1)
           setRevenueDaily(revenueResponse?.data || [])
         }
       } catch (err) {
         console.error('Error fetching monthly best sellers:', err)
         if (isCurrent) {
           setMonthlySoldProducts([])
-          setBestSellers([])
           setRevenueDaily([])
         }
       } finally {
@@ -150,9 +151,20 @@ export const AdminDashboard = () => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value)
   }
 
+  const soldProductsDescending = [...monthlySoldProducts]
+    .sort((first, second) => Number(second.quantitySold || 0) - Number(first.quantitySold || 0))
   const leastSellers = [...monthlySoldProducts]
     .sort((first, second) => Number(first.quantitySold || 0) - Number(second.quantitySold || 0))
     .slice(0, 5)
+  const featuredBestSeller = soldProductsDescending[0] || null
+  const featuredLeastSeller = leastSellers[0] || null
+  const topFiveSoldProducts = soldProductsDescending.slice(0, 5)
+  const soldProductsPageCount = Math.max(1, Math.ceil(soldProductsDescending.length / SOLD_PRODUCTS_PAGE_SIZE))
+  const currentSoldProductsPage = Math.min(soldProductsPage, soldProductsPageCount)
+  const pagedSoldProducts = soldProductsDescending.slice(
+    (currentSoldProductsPage - 1) * SOLD_PRODUCTS_PAGE_SIZE,
+    currentSoldProductsPage * SOLD_PRODUCTS_PAGE_SIZE,
+  )
   const totalSoldQuantity = monthlySoldProducts.reduce(
     (total, product) => total + (Number(product.quantitySold) || 0),
     0,
@@ -168,6 +180,17 @@ export const AdminDashboard = () => {
     : 0
   const allSoldProductsHaveSameQuantity = monthlySoldProducts.length > 1
     && highestSoldQuantity === lowestSoldQuantity
+  const getRevenueShare = (revenue) => totalSoldRevenue > 0
+    ? ((Number(revenue) || 0) / totalSoldRevenue) * 100
+    : 0
+  const chartMaxRevenue = Math.max(...revenueDaily.map(item => Number(item.revenue) || 0), 1)
+  const peakRevenueDay = revenueDaily.reduce(
+    (peak, item) => (!peak || Number(item.revenue) > Number(peak.revenue) ? item : peak),
+    null,
+  )
+  const averageDailyRevenue = revenueDaily.length > 0
+    ? revenueDaily.reduce((total, item) => total + (Number(item.revenue) || 0), 0) / revenueDaily.length
+    : 0
 
   // Tính tỷ lệ hoàn thành đơn hàng
   const completionRate = summary.totalOrders > 0 
@@ -177,7 +200,7 @@ export const AdminDashboard = () => {
   // Tính toán vẽ SVG chart cho doanh thu tháng đang chọn
   const getChartPoints = () => {
     if (revenueDaily.length === 0) return ''
-    const maxVal = Math.max(...revenueDaily.map(d => d.revenue), 100000)
+    const maxVal = chartMaxRevenue
     const width = 600
     const height = 150
     const padding = 20
@@ -296,12 +319,25 @@ export const AdminDashboard = () => {
             {revenueDaily.length > 0 ? (
               <div className="relative pt-2">
                 <svg viewBox="0 0 600 150" className="w-full h-auto overflow-visible">
+                  <defs>
+                    <linearGradient id="monthly-revenue-area" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stopColor="#1a1a1a" stopOpacity="0.2" />
+                      <stop offset="100%" stopColor="#1a1a1a" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
                   {/* Grid Lines */}
                   <line x1="20" y1="20" x2="580" y2="20" stroke="#f3f4f6" strokeWidth="1" />
                   <line x1="20" y1="75" x2="580" y2="75" stroke="#f3f4f6" strokeWidth="1" />
                   <line x1="20" y1="130" x2="580" y2="130" stroke="#e5e7eb" strokeWidth="1" />
+                  <text x="20" y="14" fill="#8c8c8c" fontSize="8">{formatPrice(chartMaxRevenue)}</text>
+                  <text x="20" y="70" fill="#8c8c8c" fontSize="8">{formatPrice(chartMaxRevenue / 2)}</text>
+                  <text x="20" y="145" fill="#8c8c8c" fontSize="8">0 đ</text>
                   
                   {/* Revenue Line */}
+                  <polygon
+                    fill="url(#monthly-revenue-area)"
+                    points={`20,130 ${getChartPoints()} 580,130`}
+                  />
                   <polyline
                     fill="none"
                     stroke="#1a1a1a"
@@ -311,7 +347,7 @@ export const AdminDashboard = () => {
                   
                   {/* Dots on line */}
                   {revenueDaily.map((d, index) => {
-                    const maxVal = Math.max(...revenueDaily.map(item => item.revenue), 100000)
+                    const maxVal = chartMaxRevenue
                     const x = 20 + (index / Math.max(revenueDaily.length - 1, 1)) * 560
                     const y = 150 - 20 - (d.revenue / maxVal) * 110
                     return (
@@ -363,7 +399,10 @@ export const AdminDashboard = () => {
                   </select>
                   <select
                     value={selectedReportMonth}
-                    onChange={(event) => setBestSellerMonth(`${selectedReportYear}-${event.target.value}`)}
+                    onChange={(event) => {
+                      setBestSellerMonth(`${selectedReportYear}-${event.target.value}`)
+                      setSoldProductsPage(1)
+                    }}
                     aria-label="Chọn tháng thống kê"
                     className="border border-gray-200 bg-white px-2 py-1.5 text-[10px] font-semibold text-brand-charcoal outline-none focus:border-brand-charcoal"
                   >
@@ -371,6 +410,18 @@ export const AdminDashboard = () => {
                       <option key={month.value} value={month.value}>{month.label}</option>
                     ))}
                   </select>
+                </div>
+                <div className="mt-5 grid grid-cols-2 gap-3 border-t border-gray-100 pt-4">
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-brand-muted">Ngày doanh thu cao nhất</p>
+                    <p className="mt-1 text-xs font-bold text-brand-charcoal">{peakRevenueDay ? formatPrice(peakRevenueDay.revenue) : '—'}</p>
+                    <p className="mt-0.5 text-[10px] text-brand-muted">{peakRevenueDay?.period || 'Chưa có dữ liệu'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-brand-muted">Doanh thu trung bình/ngày</p>
+                    <p className="mt-1 text-xs font-bold text-brand-charcoal">{formatPrice(averageDailyRevenue)}</p>
+                    <p className="mt-0.5 text-[10px] text-brand-muted">Theo ngày có phát sinh doanh thu</p>
+                  </div>
                 </div>
               </div>
               {!isLoadingBestSellers && monthlySoldProducts.length > 0 && (
@@ -393,25 +444,59 @@ export const AdminDashboard = () => {
                 <div className="flex h-32 items-center justify-center border border-dashed border-gray-200">
                   <span className="text-xs text-brand-muted uppercase tracking-wider">Đang tải thống kê tháng...</span>
                 </div>
-              ) : bestSellers.length > 0 ? (
+              ) : monthlySoldProducts.length > 0 ? (
                 <>
                   {allSoldProductsHaveSameQuantity && (
                     <p className="mb-3 border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-medium leading-relaxed text-amber-800">
                       Các sản phẩm đang đồng hạng 1, cùng bán {highestSoldQuantity} cái trong {formatMonthLabel(bestSellerMonth)}.
                     </p>
                   )}
+                  <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="border border-emerald-200 bg-emerald-50/70 p-3">
+                      <p className="text-[8px] font-bold uppercase tracking-[0.15em] text-emerald-700">Bán chạy nhất</p>
+                      <p className="mt-1 truncate text-xs font-bold text-brand-charcoal" title={featuredBestSeller?.productName}>{featuredBestSeller?.productName}</p>
+                      <p className="mt-1 text-[10px] text-emerald-800">{featuredBestSeller?.quantitySold || 0} cái · {formatPrice(featuredBestSeller?.revenue)} · {getRevenueShare(featuredBestSeller?.revenue).toFixed(1)}%</p>
+                    </div>
+                    <div className="border border-amber-200 bg-amber-50/70 p-3">
+                      <p className="text-[8px] font-bold uppercase tracking-[0.15em] text-amber-700">Ít bán nhất</p>
+                      <p className="mt-1 truncate text-xs font-bold text-brand-charcoal" title={featuredLeastSeller?.productName}>{featuredLeastSeller?.productName}</p>
+                      <p className="mt-1 text-[10px] text-amber-800">{featuredLeastSeller?.quantitySold || 0} cái · {formatPrice(featuredLeastSeller?.revenue)} · {getRevenueShare(featuredLeastSeller?.revenue).toFixed(1)}%</p>
+                    </div>
+                  </div>
+                  <div className="mb-4 border-y border-gray-100 py-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <h4 className="text-[9px] font-bold uppercase tracking-[0.15em] text-brand-charcoal">Top 5 theo số lượng bán</h4>
+                      <span className="text-[9px] text-brand-muted">Thanh dài hơn = bán nhiều hơn</span>
+                    </div>
+                    <div className="space-y-2.5">
+                      {topFiveSoldProducts.map((item, index) => {
+                        const width = highestSoldQuantity > 0
+                          ? Math.max(8, (Number(item.quantitySold || 0) / highestSoldQuantity) * 100)
+                          : 0
+                        return (
+                          <div key={item.productVariantId || `${item.productName}-${index}`}>
+                            <div className="mb-1 flex items-center justify-between gap-2 text-[10px]">
+                              <span className="truncate font-medium text-brand-charcoal">#{index + 1} {item.productName}</span>
+                              <span className="shrink-0 font-bold text-brand-charcoal">{item.quantitySold} cái</span>
+                            </div>
+                            <div className="h-1.5 overflow-hidden bg-gray-100">
+                              <div className="h-full bg-brand-charcoal transition-all" style={{ width: `${width}%` }} />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
                   <div className="space-y-4">
-                  {bestSellers.map((item, index) => (
+                  {pagedSoldProducts.map((item, index) => (
                     <div key={item.productVariantId || index} className="flex items-center justify-between pb-3 border-b border-gray-100 last:border-0 last:pb-0">
                       <div className="flex min-w-0 items-start pr-2">
                         <span className="mr-2 inline-flex h-6 shrink-0 items-center rounded-full bg-brand-charcoal px-1.5 text-[9px] font-bold text-white">
-                          {Number(item.quantitySold) === highestSoldQuantity ? 'TOP' : `#${index + 1}`}
+                          {Number(item.quantitySold) === highestSoldQuantity ? 'TOP' : `#${(currentSoldProductsPage - 1) * SOLD_PRODUCTS_PAGE_SIZE + index + 1}`}
                         </span>
                         <div className="min-w-0">
                           <p className="text-xs font-semibold text-brand-charcoal truncate">{item.productName}</p>
-                          <p className="text-[9px] text-brand-muted uppercase tracking-wider mt-0.5">
-                            SKU: {item.sku} | Size: {item.size} - Màu: {item.color}
-                          </p>
+                          <p className="mt-0.5 text-[10px] text-brand-muted">Size {item.size || '—'} · Màu {item.color || '—'}</p>
                         </div>
                       </div>
                       <div className="text-right shrink-0">
@@ -421,6 +506,25 @@ export const AdminDashboard = () => {
                     </div>
                   ))}
                 </div>
+                {soldProductsPageCount > 1 && (
+                  <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-[10px] text-brand-muted">
+                    <span>Trang {currentSoldProductsPage}/{soldProductsPageCount}</span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSoldProductsPage((page) => Math.max(1, page - 1))}
+                        disabled={currentSoldProductsPage === 1}
+                        className="border border-gray-200 px-2.5 py-1 font-semibold text-brand-charcoal disabled:cursor-not-allowed disabled:opacity-40"
+                      >Trước</button>
+                      <button
+                        type="button"
+                        onClick={() => setSoldProductsPage((page) => Math.min(soldProductsPageCount, page + 1))}
+                        disabled={currentSoldProductsPage === soldProductsPageCount}
+                        className="border border-gray-200 px-2.5 py-1 font-semibold text-brand-charcoal disabled:cursor-not-allowed disabled:opacity-40"
+                      >Sau</button>
+                    </div>
+                  </div>
+                )}
                 <div className="mt-5 border-t border-gray-100 pt-4">
                   <h4 className="mb-3 text-[10px] font-bold uppercase tracking-[0.15em] text-brand-charcoal">Sản phẩm bán ít nhất</h4>
                   {allSoldProductsHaveSameQuantity ? (
@@ -433,7 +537,7 @@ export const AdminDashboard = () => {
                       <div key={item.productVariantId || index} className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate text-xs font-semibold text-brand-charcoal">{item.productName}</p>
-                          <p className="mt-0.5 text-[9px] uppercase tracking-wider text-brand-muted">SKU: {item.sku} | {item.size} - {item.color}</p>
+                          <p className="mt-0.5 text-[10px] text-brand-muted">Size {item.size || '—'} · Màu {item.color || '—'}</p>
                         </div>
                         <p className="shrink-0 text-xs font-bold text-brand-charcoal">{item.quantitySold} cái</p>
                       </div>
@@ -450,6 +554,65 @@ export const AdminDashboard = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {!loading && !error && monthlySoldProducts.length > 0 && (
+        <section className="bg-white border border-black/5">
+          <div className="flex flex-col gap-3 border-b border-gray-100 p-6 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-brand-charcoal">Hiệu suất sản phẩm</h3>
+              <p className="mt-1 text-[10px] uppercase tracking-wider text-brand-muted">Danh sách sản phẩm có doanh số trong {formatMonthLabel(bestSellerMonth)}</p>
+            </div>
+            <span className="text-xs font-semibold text-brand-muted">{monthlySoldProducts.length} sản phẩm</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-[760px] w-full text-left">
+              <thead className="bg-gray-50 text-[9px] font-bold uppercase tracking-wider text-brand-muted">
+                <tr>
+                  <th className="px-6 py-3">Hạng</th>
+                  <th className="px-6 py-3">Sản phẩm</th>
+                  <th className="px-6 py-3 text-right">Đã bán</th>
+                  <th className="px-6 py-3 text-right">Doanh thu</th>
+                  <th className="px-6 py-3">Tỷ trọng doanh thu</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {pagedSoldProducts.map((item, index) => {
+                  const share = getRevenueShare(item.revenue)
+                  const rank = (currentSoldProductsPage - 1) * SOLD_PRODUCTS_PAGE_SIZE + index + 1
+                  return (
+                    <tr key={item.productVariantId || `${item.productName}-${rank}`} className="hover:bg-brand-cream/20">
+                      <td className="px-6 py-4 text-xs font-bold text-brand-charcoal">#{rank}</td>
+                      <td className="px-6 py-4">
+                        <p className="text-xs font-semibold text-brand-charcoal">{item.productName}</p>
+                        <p className="mt-1 text-[10px] text-brand-muted">Size {item.size || '—'} · Màu {item.color || '—'}</p>
+                      </td>
+                      <td className="px-6 py-4 text-right text-xs font-bold text-brand-charcoal">{item.quantitySold} cái</td>
+                      <td className="px-6 py-4 text-right text-xs font-semibold text-brand-charcoal">{formatPrice(item.revenue)}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="h-1.5 min-w-24 flex-1 overflow-hidden bg-gray-100">
+                            <div className="h-full bg-brand-charcoal" style={{ width: `${Math.max(share > 0 ? 4 : 0, share)}%` }} />
+                          </div>
+                          <span className="w-10 text-right text-[10px] font-bold text-brand-charcoal">{share.toFixed(1)}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          {soldProductsPageCount > 1 && (
+            <div className="flex items-center justify-between border-t border-gray-100 px-6 py-4">
+              <p className="text-xs text-brand-muted">Hiển thị {(currentSoldProductsPage - 1) * SOLD_PRODUCTS_PAGE_SIZE + 1}–{Math.min(currentSoldProductsPage * SOLD_PRODUCTS_PAGE_SIZE, monthlySoldProducts.length)} / {monthlySoldProducts.length} sản phẩm</p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setSoldProductsPage((page) => Math.max(1, page - 1))} disabled={currentSoldProductsPage === 1} className="border border-gray-200 px-3 py-1.5 text-xs font-semibold text-brand-charcoal disabled:cursor-not-allowed disabled:opacity-40">Trước</button>
+                <button type="button" onClick={() => setSoldProductsPage((page) => Math.min(soldProductsPageCount, page + 1))} disabled={currentSoldProductsPage === soldProductsPageCount} className="border border-gray-200 px-3 py-1.5 text-xs font-semibold text-brand-charcoal disabled:cursor-not-allowed disabled:opacity-40">Sau</button>
+              </div>
+            </div>
+          )}
+        </section>
       )}
 
       {!loading && !error && (

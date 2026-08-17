@@ -11,6 +11,7 @@ import couponApi from '@/api/coupons/couponApi.js'
 import paymentApi from '@/api/payments/paymentApi.js'
 import userApi from '@/api/users/userApi.js'
 import shippingApi from '@/api/shipping/shippingApi.js'
+import informationApi from '@/api/information/informationApi.js'
 import { AddressSelector } from '@/components/customer/cart/AddressSelector/AddressSelector.jsx'
 import { DISCOUNT_TYPES } from '@/types/coupon.js'
 import { replaceBrokenProductImage } from '@/utils/products/imageUrl.js'
@@ -35,6 +36,52 @@ const getPaymentMethodType = (method) => String(
   || method?.name
   || '',
 ).toUpperCase()
+
+const getSavedAddressFirstName = (address) => address?.firstName || address?.fisrtName || ''
+
+const getAddressTypeLabel = (typeAddress) => {
+  const labels = {
+    HOME: 'Nhà riêng',
+    OFFICE: 'Văn phòng',
+    OTHER: 'Địa chỉ khác',
+  }
+  return labels[String(typeAddress || '').toUpperCase()] || 'Địa chỉ đã lưu'
+}
+
+const toDeliveryInfo = (address) => ({
+  fullName: [address?.lastName, getSavedAddressFirstName(address)].filter(Boolean).join(' ').trim(),
+  phone: String(address?.phone || '').replace(/\s/g, '').replace(/^\+84/, '0'),
+  addressLine: address?.addressLine || '',
+  address: [address?.addressLine, address?.ward, address?.district, address?.province].filter(Boolean).join(', '),
+  province: address?.province || '',
+  district: address?.district || '',
+  ward: address?.ward || '',
+})
+
+const toSavedAddressPayload = (form, typeAddress) => {
+  const nameParts = String(form.fullName || '').trim().split(/\s+/).filter(Boolean)
+  if (nameParts.length < 2) return null
+
+  return {
+    lastName: nameParts[0],
+    firstName: nameParts.slice(1).join(' '),
+    phone: String(form.phone || '').replace(/\s/g, ''),
+    addressLine: String(form.addressLine || '').trim(),
+    ward: String(form.ward || '').trim(),
+    district: String(form.district || '').trim(),
+    province: String(form.province || '').trim(),
+    typeAddress,
+  }
+}
+
+const sameSavedAddress = (address, form) => {
+  const normalise = (value) => String(value || '').trim().toLocaleLowerCase('vi-VN')
+  return normalise(address?.addressLine) === normalise(form.addressLine)
+    && normalise(address?.ward) === normalise(form.ward)
+    && normalise(address?.district) === normalise(form.district)
+    && normalise(address?.province) === normalise(form.province)
+    && normalise(address?.phone) === normalise(form.phone)
+}
 
 export const CartPage = () => {
   const navigate = useNavigate()
@@ -165,6 +212,7 @@ export const CartPage = () => {
   const [form, setForm] = useState({
     fullName: '',
     phone: '',
+    addressLine: '',
     address: '',
     province: '',
     district: '',
@@ -174,6 +222,40 @@ export const CartPage = () => {
   const [deliveryInfoMode, setDeliveryInfoMode] = useState('default')
   const [defaultDeliveryInfo, setDefaultDeliveryInfo] = useState(null)
   const [isLoadingDefaultDeliveryInfo, setIsLoadingDefaultDeliveryInfo] = useState(true)
+  const [savedAddresses, setSavedAddresses] = useState([])
+  const [isLoadingSavedAddresses, setIsLoadingSavedAddresses] = useState(true)
+  const [savedAddressError, setSavedAddressError] = useState(null)
+  const [selectedSavedAddressId, setSelectedSavedAddressId] = useState(null)
+  const [saveNewAddress, setSaveNewAddress] = useState(false)
+  const [newAddressType, setNewAddressType] = useState('HOME')
+
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken')
+    if (!token) {
+      setIsLoadingSavedAddresses(false)
+      return undefined
+    }
+
+    const controller = new AbortController()
+    const loadSavedAddresses = async () => {
+      setSavedAddressError(null)
+      try {
+        const response = await informationApi.getMyInformation({ page: 0, size: 50, sort: 'id,desc' }, controller.signal)
+        const data = unwrapApiData(response)
+        setSavedAddresses(Array.isArray(data) ? data : data?.content || [])
+      } catch (error) {
+        if (error?.name !== 'CanceledError' && error?.code !== 'ERR_CANCELED') {
+          console.error('Không thể tải sổ địa chỉ:', error)
+          setSavedAddressError('Không thể tải sổ địa chỉ. Bạn vẫn có thể nhập địa chỉ mới.')
+        }
+      } finally {
+        if (!controller.signal.aborted) setIsLoadingSavedAddresses(false)
+      }
+    }
+
+    loadSavedAddresses()
+    return () => controller.abort()
+  }, [])
 
   // Tự động lấy tên và số điện thoại từ hồ sơ của tài khoản đã đăng nhập.
   useEffect(() => {
@@ -223,6 +305,7 @@ export const CartPage = () => {
           ...previous,
           fullName: previous.fullName || defaultInfo.fullName,
           phone: previous.phone || defaultInfo.phone,
+          addressLine: previous.addressLine || '',
           address: previous.address || defaultInfo.address,
           province: previous.province || defaultInfo.province,
           district: previous.district || defaultInfo.district,
@@ -253,6 +336,22 @@ export const CartPage = () => {
     && defaultDeliveryInfo?.district
     && defaultDeliveryInfo?.ward,
   )
+
+  const selectedSavedAddress = savedAddresses.find(
+    (address) => String(address.id) === String(selectedSavedAddressId),
+  )
+  const isUsingSavedAddress = deliveryInfoMode === 'saved' && Boolean(selectedSavedAddress)
+  const isUsingDefaultAddress = deliveryInfoMode === 'default' && hasDefaultDeliveryInfo
+  const isEnteringNewAddress = !isUsingSavedAddress && !isUsingDefaultAddress
+
+  const applySavedAddress = (address) => {
+    const deliveryInfo = toDeliveryInfo(address)
+    setSelectedSavedAddressId(address.id)
+    setDeliveryInfoMode('saved')
+    setSaveNewAddress(false)
+    setForm(previous => ({ ...previous, ...deliveryInfo }))
+    setErrors({})
+  }
 
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -442,22 +541,7 @@ export const CartPage = () => {
     isSubmittingRef.current = true
     setIsSubmitting(true)
 
-    try {// Chỉ cho khách hàng đặt tối đa một đơn hàng.
-const previousOrdersResponse = await orderApi.getMyOrders({
-  page: 0,
-  size: 1,
-})
-
-const previousOrders = unwrapApiData(previousOrdersResponse)
-
-const hasPlacedOrder = Array.isArray(previousOrders)
-  ? previousOrders.length > 0
-  : Number(previousOrders?.totalElements ?? 0) > 0
-
-if (hasPlacedOrder) {
-  toast.error('Mỗi khách hàng chỉ được đặt một đơn hàng.')
-  return
-}
+    try {
       // Giỏ hàng đã được đồng bộ qua useCart hook, tiến hành checkout trực tiếp
 
       // CRIT-02 FIX: Gửi danh sách cartItemIds đã chọn thay vì checkout toàn bộ giỏ
@@ -485,6 +569,26 @@ if (hasPlacedOrder) {
       }
 
       // 1. Tạo đơn hàng trên backend
+      if (deliveryInfoMode === 'new' && saveNewAddress && !savedAddresses.some((address) => sameSavedAddress(address, form))) {
+        const savedAddressPayload = toSavedAddressPayload(form, newAddressType)
+        if (!savedAddressPayload?.addressLine) {
+          toast.error('Vui lòng nhập họ tên và địa chỉ chi tiết hợp lệ để lưu địa chỉ.')
+        } else {
+          try {
+            const savedAddressResponse = await informationApi.createInformation(savedAddressPayload)
+            const savedAddress = unwrapApiData(savedAddressResponse)
+            if (savedAddress?.id) {
+              setSavedAddresses((current) => [savedAddress, ...current])
+              setSelectedSavedAddressId(savedAddress.id)
+              setSaveNewAddress(false)
+            }
+          } catch (saveError) {
+            console.error('Không thể lưu địa chỉ:', saveError)
+            toast.error('Đơn hàng vẫn được tạo, nhưng chưa thể lưu địa chỉ này.')
+          }
+        }
+      }
+
       const res = await orderApi.checkout(checkoutData)
 
       if (paymentMethodType === 'MOMO') {
@@ -704,6 +808,8 @@ if (hasPlacedOrder) {
                               onClick={() => {
                                 if (!defaultDeliveryInfo) return
                                 setDeliveryInfoMode('default')
+                                setSelectedSavedAddressId(null)
+                                setSaveNewAddress(false)
                                 setForm(previous => ({ ...previous, ...defaultDeliveryInfo }))
                                 setErrors({})
                               }}
@@ -721,10 +827,13 @@ if (hasPlacedOrder) {
                               disabled={isSubmitting}
                               onClick={() => {
                                 setDeliveryInfoMode('new')
+                                setSelectedSavedAddressId(null)
+                                setSaveNewAddress(false)
                                 setForm(previous => ({
                                   ...previous,
                                   fullName: defaultDeliveryInfo?.fullName || previous.fullName,
                                   phone: defaultDeliveryInfo?.phone || previous.phone,
+                                  addressLine: '',
                                   address: '',
                                   province: '',
                                   district: '',
@@ -745,16 +854,87 @@ if (hasPlacedOrder) {
                           {!hasDefaultDeliveryInfo && (
                             <p className="mt-2 text-[11px] text-amber-700">Chưa có địa chỉ mặc định đầy đủ. Vui lòng chọn thông tin mới.</p>
                           )}
+                          <section className="mt-5 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                            <div className="flex items-center justify-between gap-3 border-b border-gray-100 bg-brand-cream/35 px-4 py-3">
+                              <div className="flex items-center gap-2.5">
+                                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-charcoal text-white">
+                                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s7-5.2 7-12a7 7 0 1 0-14 0c0 6.8 7 12 7 12Z" />
+                                    <circle cx="12" cy="9" r="2.2" />
+                                  </svg>
+                                </span>
+                                <div>
+                                  <h3 className="text-sm font-semibold text-brand-charcoal">Địa chỉ đã lưu</h3>
+                                  <p className="text-[11px] text-brand-muted">Chọn nhanh địa chỉ giao hàng cho đơn này</p>
+                                </div>
+                              </div>
+                              <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-brand-muted shadow-sm">{savedAddresses.length} địa chỉ</span>
+                            </div>
+
+                            <div className="p-3">
+                              {isLoadingSavedAddresses ? (
+                                <div className="space-y-2 animate-pulse">
+                                  <div className="h-4 w-32 rounded bg-gray-100" />
+                                  <div className="h-12 rounded-lg bg-gray-100" />
+                                </div>
+                              ) : savedAddresses.length > 0 ? (
+                                <div className="grid gap-2">
+                                  {savedAddresses.map((savedAddress) => {
+                                    const isSelected = isUsingSavedAddress && String(selectedSavedAddressId) === String(savedAddress.id)
+                                    const savedDeliveryInfo = toDeliveryInfo(savedAddress)
+                                    const addressTypeLabel = getAddressTypeLabel(savedAddress.typeAddress)
+                                    return (
+                                      <button
+                                        key={savedAddress.id}
+                                        type="button"
+                                        disabled={isSubmitting}
+                                        onClick={() => applySavedAddress(savedAddress)}
+                                        className={`group relative rounded-xl border p-3.5 pr-12 text-left transition-all ${
+                                          isSelected
+                                            ? 'border-brand-charcoal bg-brand-cream/55 shadow-sm ring-1 ring-brand-charcoal'
+                                            : 'border-gray-200 bg-white hover:border-brand-charcoal/60 hover:bg-brand-cream/20'
+                                        }`}
+                                      >
+                                        <span className="mb-1.5 inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-brand-muted">{addressTypeLabel}</span>
+                                        <span className="block text-xs font-semibold text-brand-charcoal">{savedDeliveryInfo.fullName || 'Người nhận'} <span className="font-normal text-brand-muted">· {savedDeliveryInfo.phone}</span></span>
+                                        <span className="mt-1 block text-[11px] leading-relaxed text-brand-muted">{savedDeliveryInfo.address}</span>
+                                        {isSelected && <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white shadow-sm" aria-label="Đang chọn">Đang dùng</span>}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/70 px-4 py-5 text-center">
+                                  <p className="text-xs font-semibold text-brand-charcoal">Bạn chưa có địa chỉ đã lưu</p>
+                                  <p className="mt-1 text-[11px] leading-relaxed text-brand-muted">Chọn “Thông tin mới”, nhập địa chỉ và tích “Lưu địa chỉ này” khi đặt hàng.</p>
+                                </div>
+                              )}
+                              {savedAddressError && <p className="mt-2 text-[11px] text-amber-700">{savedAddressError}</p>}
+                            </div>
+                          </section>
                         </div>
 
-                        {deliveryInfoMode === 'default' && hasDefaultDeliveryInfo ? (
-                          <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm text-emerald-950">
+                        {isUsingDefaultAddress ? (
+                          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm text-emerald-950 shadow-sm">
                             <p className="font-semibold">Thông tin giao hàng mặc định</p>
                             <p className="mt-2">{form.fullName} · {form.phone}</p>
                             <p className="mt-1 leading-relaxed">{form.address}</p>
                           </div>
+                        ) : isUsingSavedAddress ? (
+                          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm text-emerald-950 shadow-sm">
+                            <p className="font-semibold">Địa chỉ đã lưu</p>
+                            <p className="mt-2">{form.fullName} · {form.phone}</p>
+                            <p className="mt-1 leading-relaxed">{form.address}</p>
+                          </div>
                         ) : (
-                          <>
+                          <section className="rounded-2xl border border-gray-200 bg-gray-50/50 p-4 sm:p-5">
+                            <div className="mb-5 flex items-start gap-3 border-b border-gray-200 pb-4">
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-charcoal text-sm text-white">+</span>
+                              <div>
+                                <p className="text-sm font-semibold text-brand-charcoal">Nhập địa chỉ giao hàng mới</p>
+                                <p className="mt-0.5 text-[11px] leading-relaxed text-brand-muted">Thông tin này chỉ dùng cho đơn hàng hiện tại, trừ khi bạn chọn lưu lại.</p>
+                              </div>
+                            </div>
                     {/* Full Name */}
                     <div>
                       <label htmlFor="fullName" className="block text-xs font-semibold uppercase tracking-wider text-brand-muted mb-2">
@@ -801,6 +981,7 @@ if (hasPlacedOrder) {
                       onAddressChange={(addressDetails) => {
                         setForm(prev => ({
                           ...prev,
+                          addressLine: addressDetails.addressLine,
                           address: addressDetails.shippingAddress,
                           province: addressDetails.province,
                           district: addressDetails.district,
@@ -813,7 +994,33 @@ if (hasPlacedOrder) {
                       disabled={isSubmitting}
                       error={errors.address}
                     />
-                          </>
+                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3 text-xs text-brand-charcoal">
+                      <input
+                        type="checkbox"
+                        checked={saveNewAddress}
+                        onChange={(event) => setSaveNewAddress(event.target.checked)}
+                        disabled={isSubmitting}
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-charcoal focus:ring-brand-charcoal"
+                      />
+                      <span className="flex-1">
+                        <span className="font-semibold">Lưu địa chỉ này cho lần đặt hàng sau</span>
+                        <span className="mt-0.5 block text-[11px] text-brand-muted">Địa chỉ sẽ được lưu vào sổ địa chỉ của tài khoản.</span>
+                      </span>
+                      {saveNewAddress && (
+                        <select
+                          value={newAddressType}
+                          onChange={(event) => setNewAddressType(event.target.value)}
+                          disabled={isSubmitting}
+                          aria-label="Loại địa chỉ"
+                          className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[11px]"
+                        >
+                          <option value="HOME">Nhà riêng</option>
+                          <option value="OFFICE">Văn phòng</option>
+                          <option value="OTHER">Khác</option>
+                        </select>
+                      )}
+                    </label>
+                          </section>
                         )}
                       </>
                     )}
