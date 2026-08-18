@@ -15,6 +15,8 @@ import { mapDbProduct } from '@/utils/products/productMapper.js'
 const BEST_SELLERS_DISPLAY_LIMIT = 4
 // Số sản phẩm tải để đối chiếu dữ liệu bán chạy. Có thể bỏ khi BE trả productId.
 const BEST_SELLER_PRODUCT_LOOKUP_SIZE = 500
+// BE yêu cầu khoảng thời gian; mốc này giúp thống kê toàn bộ lịch sử bán hàng.
+const ALL_TIME_BEST_SELLER_START_DATE = '2000-01-01'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -35,8 +37,6 @@ export const ProductGrid = () => {
         setLoading(true)
         setLoadError('')
         const today = new Date()
-        const from = new Date(today)
-        from.setDate(today.getDate() - 6)
         const toDateValue = (date) => {
           const year = date.getFullYear()
           const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -45,7 +45,7 @@ export const ProductGrid = () => {
         }
 
         const [bestSellerResponse, productResponse] = await Promise.all([
-          dashboardApi.getBestSellers(toDateValue(from), toDateValue(today), BEST_SELLERS_DISPLAY_LIMIT),
+          dashboardApi.getBestSellers(ALL_TIME_BEST_SELLER_START_DATE, toDateValue(today), BEST_SELLERS_DISPLAY_LIMIT),
           productApi.getAllProducts({ page: 0, size: BEST_SELLER_PRODUCT_LOOKUP_SIZE }),
         ])
 
@@ -169,7 +169,7 @@ export const ProductGrid = () => {
             Sản Phẩm Bán Chạy
           </h2>
           <p className="text-brand-muted text-lg max-w-2xl mx-auto">
-            Những thiết kế được yêu thích và mua nhiều nhất trong 7 ngày qua.
+            Những thiết kế được yêu thích và mua nhiều nhất.
           </p>
         </div>
 
@@ -188,7 +188,7 @@ export const ProductGrid = () => {
           </div>
         ) : productsList.length === 0 ? (
           <div className="mx-auto max-w-xl border border-dashed border-gray-300 px-5 py-10 text-center text-sm text-brand-muted">
-            Chưa có sản phẩm phát sinh doanh số trong 7 ngày qua.
+            Chưa có sản phẩm phát sinh doanh số.
           </div>
         ) : (
           <div className="grid min-w-0 grid-cols-1 gap-6 sm:grid-cols-2 md:gap-8 lg:grid-cols-4">
