@@ -13,6 +13,8 @@ import { mapDbProduct } from '@/utils/products/productMapper.js'
 
 // Số sản phẩm bán chạy hiển thị trên trang chủ.
 const BEST_SELLERS_DISPLAY_LIMIT = 4
+// BE đang trả thống kê theo biến thể. Tải đủ để FE gộp lại theo sản phẩm.
+const BEST_SELLER_VARIANT_FETCH_LIMIT = 500
 // Số sản phẩm tải để đối chiếu dữ liệu bán chạy. Có thể bỏ khi BE trả productId.
 const BEST_SELLER_PRODUCT_LOOKUP_SIZE = 500
 // BE yêu cầu khoảng thời gian; mốc này giúp thống kê toàn bộ lịch sử bán hàng.
@@ -45,7 +47,7 @@ export const ProductGrid = () => {
         }
 
         const [bestSellerResponse, productResponse] = await Promise.all([
-          dashboardApi.getBestSellers(ALL_TIME_BEST_SELLER_START_DATE, toDateValue(today), BEST_SELLERS_DISPLAY_LIMIT),
+          dashboardApi.getBestSellers(ALL_TIME_BEST_SELLER_START_DATE, toDateValue(today), BEST_SELLER_VARIANT_FETCH_LIMIT),
           productApi.getAllProducts({ page: 0, size: BEST_SELLER_PRODUCT_LOOKUP_SIZE }),
         ])
 
@@ -57,7 +59,28 @@ export const ProductGrid = () => {
         const products = productResponse?.data?.content || []
         const normalizeName = (name) => String(name || '').trim().toLocaleUpperCase('vi-VN')
 
-        const rankedProducts = bestSellers
+        // BE thống kê từng size/màu. Gộp các biến thể cùng tên để xếp hạng theo sản phẩm.
+        const bestSellersByProduct = new Map()
+        bestSellers.forEach((bestSeller) => {
+          const productNameKey = normalizeName(bestSeller.productName)
+          if (!productNameKey) return
+
+          const current = bestSellersByProduct.get(productNameKey) || {
+            ...bestSeller,
+            quantitySold: 0,
+            revenue: 0,
+          }
+          current.quantitySold += Number(bestSeller.quantitySold || 0)
+          current.revenue += Number(bestSeller.revenue || 0)
+          bestSellersByProduct.set(productNameKey, current)
+        })
+
+        const rankedProducts = [...bestSellersByProduct.values()]
+          .sort((first, second) => (
+            Number(second.quantitySold || 0) - Number(first.quantitySold || 0)
+            || Number(second.revenue || 0) - Number(first.revenue || 0)
+          ))
+          .slice(0, BEST_SELLERS_DISPLAY_LIMIT)
           .map((bestSeller) => {
             const product = products.find(
               (item) => normalizeName(item.name) === normalizeName(bestSeller.productName),
