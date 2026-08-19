@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
 import cartApi from '@/api/cart/cartApi.js'
 import productApi from '@/api/products/productApi.js'
@@ -23,6 +23,9 @@ const getCartItemKey = (product) => {
 export const useCart = () => {
   const [cartItems, setCartItems] = useState([])
   const [loading, setLoading] = useState(false)
+  // StrictMode có thể chạy useEffect hai lần ở môi trường dev. Cờ này đảm bảo
+  // thao tác mua dở sau đăng nhập chỉ được khôi phục đúng một lần.
+  const isRestoringPendingPurchaseRef = useRef(false)
 
   // Lấy giỏ hàng từ Backend
   const fetchBackendCart = useCallback(async () => {
@@ -226,13 +229,16 @@ export const useCart = () => {
   useEffect(() => {
     const token = localStorage.getItem('accessToken')
     const pendingStr = sessionStorage.getItem('pendingPurchase')
-    if (token && pendingStr) {
+    if (token && pendingStr && !isRestoringPendingPurchaseRef.current) {
       try {
+        isRestoringPendingPurchaseRef.current = true
         const { product, action } = JSON.parse(pendingStr)
         addItem(product, 1).then(() => {
           sessionStorage.removeItem('pendingPurchase')
           toast.success(`Đã thêm "${product.name}" vào giỏ hàng!`)
-          if (action === 'buy') {
+          // LoginForm đã chuyển khách tới /cart cho luồng "Mua ngay".
+          // Chỉ điều hướng khi chưa ở trang giỏ để tránh reload trang lần hai.
+          if (action === 'buy' && window.location.pathname !== '/cart') {
             setTimeout(() => {
               window.location.href = '/cart'
             }, 600)
