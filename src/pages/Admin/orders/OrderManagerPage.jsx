@@ -82,6 +82,33 @@ const getPaymentDetails = (payment = {}, order = {}) => ({
   status: String(firstValue(payment.status, payment.paymentStatus, order.paymentStatus, 'UNPAID')).toUpperCase(),
 })
 
+const getPaymentDisplay = (paymentStatus, orderStatus) => {
+  const status = String(paymentStatus || 'UNPAID').toUpperCase()
+  const isDelivered = String(orderStatus || '').toUpperCase() === 'DELIVERED'
+
+  // BE trả SUCCESS khi MoMo/VNPay/COD thanh toán xong. Đơn đã giao cũng
+  // được xem là đã thu tiền theo nghiệp vụ hiện tại.
+  if (isDelivered || ['SUCCESS', 'PAID', 'COMPLETED'].includes(status)) {
+    return { label: 'ĐÃ THANH TOÁN', tone: 'success', isPaid: true }
+  }
+  if (['CANCELLED', 'CANCELED'].includes(status)) {
+    return { label: 'ĐÃ HỦY THANH TOÁN', tone: 'danger', isPaid: false }
+  }
+  if (status === 'EXPIRED') {
+    return { label: 'THANH TOÁN HẾT HẠN', tone: 'warning', isPaid: false }
+  }
+  if (['FAILED', 'FAIL'].includes(status)) {
+    return { label: 'THANH TOÁN THẤT BẠI', tone: 'danger', isPaid: false }
+  }
+  return { label: 'CHƯA THANH TOÁN', tone: 'warning', isPaid: false }
+}
+
+const paymentToneClass = {
+  success: 'bg-green-50 text-green-700 border-green-200',
+  warning: 'bg-amber-50 text-amber-700 border-amber-200',
+  danger: 'bg-red-50 text-red-700 border-red-200',
+}
+
 const normalizeSearchText = (value) => String(value ?? '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -544,17 +571,13 @@ export const OrderManager = () => {
                       <p><span className="font-semibold text-brand-muted">Tổng thanh toán:</span> {formatVND(payment.amount)}</p>
                       <p className="flex items-center gap-1.5">
                         <span className="font-semibold text-brand-muted">Trạng thái:</span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                          payment.status === 'PAID'
-                            ? 'bg-green-50 text-green-700 border-green-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}>
-                          {payment.status === 'PAID' ? 'ĐÃ THANH TOÁN' : 'CHƯA THANH TOÁN'}
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${paymentToneClass[getPaymentDisplay(payment.status, selectedOrder.status).tone]}`}>
+                          {getPaymentDisplay(payment.status, selectedOrder.status).label}
                         </span>
                       </p>
 
                       {/* Confirm COD Payment Trigger for Admin */}
-                      {payment.method === 'COD' && payment.status !== 'PAID' && payment.id && (selectedOrder.status === 'SHIPPING' || selectedOrder.status === 'DELIVERED') && (
+                      {payment.method === 'COD' && !getPaymentDisplay(payment.status, selectedOrder.status).isPaid && payment.id && selectedOrder.status === 'SHIPPING' && (
                         <button
                           type="button"
                           onClick={() => handleConfirmCodPayment(payment.id, selectedOrder.orderId)}

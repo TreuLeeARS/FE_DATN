@@ -28,6 +28,31 @@ const normalizeOrderStatus = (status) => {
   return value
 }
 
+const getPaymentDisplay = (paymentStatus, orderStatus) => {
+  const status = String(paymentStatus || 'UNPAID').toUpperCase()
+  const isDelivered = normalizeOrderStatus(orderStatus) === 'DELIVERED'
+
+  if (isDelivered || ['SUCCESS', 'PAID', 'COMPLETED'].includes(status)) {
+    return { label: 'Đã thanh toán', tone: 'success', isPaid: true }
+  }
+  if (['CANCELLED', 'CANCELED'].includes(status)) {
+    return { label: 'Đã hủy thanh toán', tone: 'danger', isPaid: false }
+  }
+  if (status === 'EXPIRED') {
+    return { label: 'Thanh toán hết hạn', tone: 'warning', isPaid: false }
+  }
+  if (['FAILED', 'FAIL'].includes(status)) {
+    return { label: 'Thanh toán thất bại', tone: 'danger', isPaid: false }
+  }
+  return { label: 'Chưa thanh toán', tone: 'warning', isPaid: false }
+}
+
+const paymentToneClass = {
+  success: 'bg-green-50 text-green-700 border-green-200',
+  warning: 'bg-amber-50 text-amber-700 border-amber-200',
+  danger: 'bg-red-50 text-red-700 border-red-200',
+}
+
 export const MyOrders = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -374,6 +399,7 @@ export const MyOrders = () => {
                   || paymentMethodCode.includes('THANH TOÁN KHI NHẬN HÀNG')
                 const orderItems = o.items || o.orderDetails || []
                 const normalizedStatus = normalizeOrderStatus(o.status)
+                const paymentDisplay = getPaymentDisplay(payStatus, normalizedStatus)
                 const canCancelOrder = ['CREATED', 'CONFIRMED'].includes(normalizedStatus)
                 const currentStepIndex = orderProgressSteps.findIndex(step => step.status === normalizedStatus)
                 const isCancelled = normalizedStatus === 'CANCELLED'
@@ -485,12 +511,8 @@ export const MyOrders = () => {
                           <p><span className="font-semibold text-brand-muted">Phương thức:</span> {paymentMethod}</p>
                             <p className="flex items-center gap-1.5">
                               <span className="font-semibold text-brand-muted">Giao dịch:</span>
-                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border uppercase tracking-wider ${
-                                payStatus === 'PAID'
-                                  ? 'bg-green-50 text-green-700 border-green-200'
-                                  : 'bg-amber-50 text-amber-700 border-amber-200'
-                              }`}>
-                                {payStatus === 'PAID' ? 'Đã thanh toán' : 'Chưa thanh toán'}
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border uppercase tracking-wider ${paymentToneClass[paymentDisplay.tone]}`}>
+                                {paymentDisplay.label}
                               </span>
                             </p>
                             {o.note && <p><span className="font-semibold text-brand-muted">Ghi chú:</span> {o.note}</p>}
@@ -555,7 +577,7 @@ export const MyOrders = () => {
                                 {reorderingOrderId === o.orderId ? 'Đang thêm vào giỏ...' : 'Mua lại'}
                               </button>
                             )}
-                            {payStatus !== 'PAID' && !isCancelled && !isCodPayment && (
+                            {!paymentDisplay.isPaid && !isCancelled && !isCodPayment && (
                               <button
                                 type="button"
                                 onClick={() => handleRepayOrder(o)}
